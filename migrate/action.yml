@@ -1,0 +1,49 @@
+name: api-migrations migrate
+description: >
+  Runs a biject migration in your own GitHub Actions: on the `biject/run/<run>` branch
+  biject pushes, checks trust against your pinned policy, applies the signed migration,
+  runs your tests against the provider's contract mock, and reports the patch and the
+  evidence. Your code never leaves this job; biject opens the PR.
+branding:
+  icon: git-pull-request
+  color: green
+inputs:
+  server:
+    description: Your biject URL, e.g. https://biject.example.com
+    required: true
+  audience:
+    description: The OIDC audience your biject server expects (its ci_oidc.audience).
+    default: biject
+  version:
+    description: api-migrations CLI version; biject writes the one its runner uses.
+    required: true
+  timeout:
+    description: Seconds per build or test command (biject's setting when empty).
+    default: ""
+  trusted-root:
+    description: Optional Sigstore trusted root JSON (private Sigstore deployments).
+    default: ""
+runs:
+  using: composite
+  steps:
+    # The run branch: biject's one workflow commit on top of the run's base commit, which
+    # the migration starts from.
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 2
+        persist-credentials: false
+    - shell: bash
+      run: '"${{ github.action_path }}/../install-cli.sh" "${{ inputs.version }}"'
+    # The contract mock answers on the provider's host name at port 443.
+    - if: runner.os == 'Linux'
+      shell: bash
+      run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+    - shell: bash
+      env:
+        BIJECT_URL: ${{ inputs.server }}
+        BIJECT_AUDIENCE: ${{ inputs.audience }}
+      run: |
+        args=(migrate)
+        if [ -n "${{ inputs.timeout }}" ]; then args+=(--timeout "${{ inputs.timeout }}"); fi
+        if [ -n "${{ inputs.trusted-root }}" ]; then args+=(--trusted-root "${{ inputs.trusted-root }}"); fi
+        api-migrations "${args[@]}"

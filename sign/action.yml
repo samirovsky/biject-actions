@@ -1,0 +1,45 @@
+name: biject sign
+description: >
+  Signs with your workflow's GitHub Actions identity (keyless Sigstore) and uploads the
+  signatures to biject: the statements a merged signing PR committed to .biject/sign/,
+  or the lock-release statement of a release.
+branding:
+  icon: pen-tool
+  color: green
+inputs:
+  server:
+    description: The biject URL, e.g. https://biject.example.com
+    required: true
+  what:
+    description: "`statements` (after a signing PR merges) or `lock` (on a release)."
+    default: statements
+  lock:
+    description: With what=lock, the lock file at the release.
+    default: api.lock.yaml
+  version:
+    description: api-migrations CLI version.
+    default: 0.1.0
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: '"${{ github.action_path }}/../install-cli.sh" "${{ inputs.version }}"'
+    - shell: bash
+      env:
+        BIJECT_URL: ${{ inputs.server }}
+      run: |
+        case "${{ inputs.what }}" in
+          statements)
+            # Only the statements this push added or changed (older ones are signed already).
+            before="${{ github.event.before }}"
+            if [ -n "$before" ] && [ "$before" != "0000000000000000000000000000000000000000" ] && git fetch -q --depth=1 origin "$before"; then
+              mapfile -t files < <(git diff --name-only --diff-filter=AM "$before" HEAD -- '.biject/sign/*.json')
+              if [ ${#files[@]} -eq 0 ]; then echo "No new statements to sign."; exit 0; fi
+              api-migrations sign "${files[@]}"
+            else
+              api-migrations sign --all
+            fi
+            ;;
+          lock) api-migrations sign-lock --lock "${{ inputs.lock }}" ;;
+          *) echo "what must be statements or lock" >&2; exit 2 ;;
+        esac

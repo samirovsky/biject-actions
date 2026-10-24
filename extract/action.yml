@@ -1,0 +1,37 @@
+name: biject extract
+description: >
+  Uploads your API specs to biject for this commit or pull request: specs a generator
+  writes (generate:) or a deployment serves (staging_url:), as listed in .biject.yml.
+  Committed spec files need no upload. Your code never leaves your CI.
+branding:
+  icon: upload-cloud
+  color: green
+inputs:
+  server:
+    description: The biject URL, e.g. https://biject.example.com
+    required: true
+  audience:
+    description: The OIDC audience the biject server expects (its ci_oidc.audience).
+    default: biject
+  api:
+    description: Only this API from .biject.yml (default all).
+    default: ""
+  version:
+    description: api-migrations CLI version.
+    default: 0.1.0
+  timeout:
+    description: Seconds the generator may run.
+    default: "1800"
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: '"${{ github.action_path }}/../install-cli.sh" "${{ inputs.version }}"'
+    - shell: bash
+      env:
+        BIJECT_URL: ${{ inputs.server }}
+        BIJECT_AUDIENCE: ${{ inputs.audience }}
+      run: |
+        args=(extract --timeout "${{ inputs.timeout }}")
+        if [ -n "${{ inputs.api }}" ]; then args+=(--api "${{ inputs.api }}"); fi
+        api-migrations "${args[@]}"

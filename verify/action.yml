@@ -1,0 +1,67 @@
+name: api-migrations verify
+description: >
+  Re-checks a biject migration PR in your own CI, without trusting biject's verdict:
+  the signatures against your pinned trust policy, that the PR is exactly the verified
+  patch, and your tests against the provider's contract mock.
+branding:
+  icon: check-circle
+  color: green
+inputs:
+  server:
+    description: Your biject URL, e.g. https://biject.example.com
+    required: true
+  audience:
+    description: The OIDC audience your biject server expects (its ci_oidc.audience).
+    default: biject
+  version:
+    description: >
+      api-migrations CLI version when the PR names none. A biject PR names the runner
+      version that produced it (`biject-runner:`), and verify installs exactly that one.
+    default: 0.1.0
+  timeout:
+    description: Seconds per build or test command.
+    default: "1800"
+  trusted-root:
+    description: Optional Sigstore trusted root JSON (private Sigstore deployments).
+    default: ""
+runs:
+  using: composite
+  steps:
+    # Only biject's migration PRs carry a run to verify.
+    - id: gate
+      shell: bash
+      run: |
+        if [[ "${{ github.event_name }}" == pull_request* && "${{ github.head_ref }}" == biject/migrate/* ]]; then
+          echo "run=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "Not a biject migration PR; nothing to verify."
+          echo "run=false" >> "$GITHUB_OUTPUT"
+        fi
+    # The PR head itself (not GitHub's merge commit), with history for the base commit.
+    - if: steps.gate.outputs.run == 'true'
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        fetch-depth: 0
+    # The runner version that produced the patch; verify refuses any other.
+    - if: steps.gate.outputs.run == 'true'
+      shell: bash
+      env:
+        PR_BODY: ${{ github.event.pull_request.body }}
+        DEFAULT_VERSION: ${{ inputs.version }}
+      run: |
+        version="$(printf '%s\n' "$PR_BODY" | sed -n 's/^biject-runner:[[:space:]]*\([0-9A-Za-z.+-]*\).*/\1/p' | head -1)"
+        "${{ github.action_path }}/../install-cli.sh" "${version:-$DEFAULT_VERSION}"
+    # The contract mock answers on the provider's host name at port 443.
+    - if: steps.gate.outputs.run == 'true' && runner.os == 'Linux'
+      shell: bash
+      run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+    - if: steps.gate.outputs.run == 'true'
+      shell: bash
+      env:
+        BIJECT_URL: ${{ inputs.server }}
+        BIJECT_AUDIENCE: ${{ inputs.audience }}
+      run: |
+        args=(verify --timeout "${{ inputs.timeout }}")
+        if [ -n "${{ inputs.trusted-root }}" ]; then args+=(--trusted-root "${{ inputs.trusted-root }}"); fi
+        api-migrations "${args[@]}"

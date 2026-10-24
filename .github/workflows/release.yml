@@ -1,0 +1,72 @@
+# Publishes release v<version> of these actions: tags this repository and attaches the
+# api-migrations CLI binaries the actions install, built from biject's private source.
+# Needs the BIJECT_SOURCE_KEY secret: the private half of a read-only deploy key of
+# samirovsky/biject.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version (biject's Cargo.toml version, e.g. 0.1.0)
+        required: true
+      source_ref:
+        description: Branch, tag or commit of samirovsky/biject to build (empty for its default branch)
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: tag
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version must look like 1.2.3"; exit 1; }
+          tag="v$VERSION"
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            git tag "$tag" && git push origin "$tag"
+          fi
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --verify-tag --title "biject actions $tag" --notes "The biject GitHub Actions and the api-migrations CLI $VERSION."
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  cli:
+    needs: tag
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+          - { os: macos-latest, target: aarch64-apple-darwin }
+          - { os: macos-latest, target: x86_64-apple-darwin }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: samirovsky/biject
+          ref: ${{ inputs.source_ref }}
+          ssh-key: ${{ secrets.BIJECT_SOURCE_KEY }}
+          persist-credentials: false
+      - name: Check the version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: grep -q "^version = \"$VERSION\"" Cargo.toml || { echo "::error::biject's Cargo.toml is not at $VERSION"; exit 1; }
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo build --release --locked -p api-migrations --target ${{ matrix.target }}
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.tag.outputs.tag }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          tar -czf "api-migrations-$TARGET.tar.gz" -C "target/$TARGET/release" api-migrations
+          gh release upload "$TAG" "api-migrations-$TARGET.tar.gz" --clobber --repo "$GITHUB_REPOSITORY"
