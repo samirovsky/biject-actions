@@ -17,7 +17,7 @@ inputs:
     description: >
       api-migrations CLI version when the PR names none. A biject PR names the runner
       version that produced it (`biject-runner:`), and verify installs exactly that one.
-    default: 0.1.0
+    default: 0.2.0
   timeout:
     description: Seconds per build or test command.
     default: "1800"

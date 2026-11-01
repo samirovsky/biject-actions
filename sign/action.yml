@@ -18,7 +18,7 @@ inputs:
     default: api.lock.yaml
   version:
     description: api-migrations CLI version.
-    default: 0.1.0
+    default: 0.2.0
 runs:
   using: composite
   steps:

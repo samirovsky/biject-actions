@@ -1,6 +1,6 @@
 # biject GitHub Actions
 
-The GitHub Actions for [biject](https://biject-demo.fly.dev), the API migration platform:
+The GitHub Actions for [biject](https://biject-demo.vercel.app), the API migration platform:
 `samirovsky/biject-actions/<name>@v<version>`. Each installs the `api-migrations` CLI
 release binary attached to this repository's release of that version (`install-cli.sh`).
 
@@ -24,9 +24,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: samirovsky/biject-actions/extract@v0.1.0
+      - uses: samirovsky/biject-actions/extract@v0.2.0
         with:
-          server: https://biject-demo.fly.dev
+          server: https://biject-demo.vercel.app
 ```
 
 This repository is published from the `actions/` directory of biject's source

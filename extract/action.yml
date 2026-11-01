@@ -18,7 +18,7 @@ inputs:
     default: ""
   version:
     description: api-migrations CLI version.
-    default: 0.1.0
+    default: 0.2.0
   timeout:
     description: Seconds the generator may run.
     default: "1800"
